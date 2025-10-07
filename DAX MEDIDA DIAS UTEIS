@@ -1,0 +1,33 @@
+Progresso_ou_Total_Mes =
+VAR DataMaximaNoFiltro = MAX('dUSS'[Data])
+VAR MesDaDataMaxima = MONTH(DataMaximaNoFiltro)
+VAR AnoDaDataMaxima = YEAR(DataMaximaNoFiltro)
+ 
+VAR MesAtual = MONTH(TODAY())
+VAR AnoAtual = YEAR(TODAY())
+ 
+VAR ValorAcumuladoD1 =
+    CALCULATE(
+        MAX('dUSS'[dia-d-1]),
+        'dUSS'[Data] = DataMaximaNoFiltro
+    )
+ 
+VAR ValorTotalDoMes =
+    CALCULATE(
+        MAX('dUSS'[Total_do_Mes]),
+        FILTER(
+            ALL('dUSS'),
+            MONTH('dUSS'[Data]) = MesDaDataMaxima &&
+            YEAR('dUSS'[Data]) = AnoDaDataMaxima
+        )
+    )
+ 
+RETURN
+    IF(
+        MesDaDataMaxima = MesAtual && AnoDaDataMaxima = AnoAtual,
+        // SE o filtro for o Mês ATUAL, mostre o progresso (Acumulado D-1)
+        ValorAcumuladoD1,
+        
+        // SE o filtro for um Mês ANTERIOR ou FUTURO, mostre o Total Final
+        ValorTotalDoMes
+    )
