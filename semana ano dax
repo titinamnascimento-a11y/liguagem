@@ -1,0 +1,24 @@
+SemanaAno = 
+VAR AnoAtual = YEAR('DimCalendario'[Date])
+VAR PrimeiroDomingo = CALCULATE(
+    MIN('DimCalendario'[Date]),
+    FILTER('DimCalendario',
+        'DimCalendario'[Date] >= DATE(AnoAtual, 1, 1) &&
+        WEEKDAY('DimCalendario'[Date], 2) = 7
+    )
+)
+VAR PrimeiroDomingoAnoAnterior = CALCULATE(
+    MIN('DimCalendario'[Date]),
+    FILTER('DimCalendario',
+        'DimCalendario'[Date] >= DATE(AnoAtual - 1, 1, 1) &&
+        WEEKDAY('DimCalendario'[Date], 2) = 7
+    )
+)
+VAR Semana =
+    IF(
+        'DimCalendario'[Date] < PrimeiroDomingo,
+        INT(DIVIDE(DATEDIFF(PrimeiroDomingoAnoAnterior, 'DimCalendario'[Date], DAY), 7)) + 1,
+        INT(DIVIDE(DATEDIFF(PrimeiroDomingo, 'DimCalendario'[Date], DAY), 7)) + 1
+    )
+ 
+RETURN "S" & FORMAT(Semana, "00")
