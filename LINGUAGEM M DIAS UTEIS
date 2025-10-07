@@ -1,0 +1,25 @@
+let
+    // Período solicitado
+    DataInicio = #date(2025, 1, 1),
+    DataFim = #date(2038, 12, 31),
+    
+    // 1. Chama a função completa (fnCalendarioCompleto) com o período e a TabelaFeriados.
+    dCalendarioFinal = fnCalendarioCompleto(
+        DataInicio, 
+        DataFim, 
+        TabelaFeriados // Referência à sua primeira consulta de feriados
+    ),
+    
+    // 2. Renomeia a coluna Soma_D_Menos_1 para o nome que você usa (dia-d-1)
+    // O nome 'Acumulado_Dia' da sua coluna Power BI (imagem) parece ser o Acumulado Dia, 
+    // mas vamos renomear a coluna D-1 da função, conforme sua intenção original.
+    #"Colunas Renomeadas" = Table.RenameColumns(dCalendarioFinal,{
+        {"Soma_D_Menos_1", "dia-d-1"}, // Acumulado até o dia anterior (D-1)
+        {"Acumulado_Dia", "Soma_Dia_Atual"} // Renomeando o Acumulado do dia atual para clareza
+    }),
+    
+    // 3. Define o tipo de dados (Se necessário, geralmente já vem da função)
+    #"Tipo Alterado" = Table.TransformColumnTypes(#"Colunas Renomeadas",{{"Data", type date}, {"dia-d-1", type text}, {"Soma_Dia_Atual", type text}, {"Total_do_Mes", type text}, {"PesoDia", type text}})
+in
+    #"Tipo Alterado"
+ 
