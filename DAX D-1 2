@@ -1,0 +1,8 @@
+Acumulado_D_Menos_1_Filtradox =
+VAR UltimoDiaNoContexto = MAX('dUSS'[Data])
+ 
+RETURN
+    CALCULATE(
+        MAX('duss'[Soma_Dia_Atual]),
+        'dUSS'[Data] = UltimoDiaNoContexto
+    )
