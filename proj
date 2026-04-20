@@ -1,0 +1,91 @@
+let
+    // ==== Parâmetros dinâmicos (ano corrente) ====
+    Hoje        = Date.From(DateTime.LocalNow()),
+    Ano         = Date.Year(Hoje),
+    InicioAno   = #date(Ano, 1, 1),
+    FimAno      = #date(Ano, 12, 31),
+    InicioMesHoje = Date.StartOfMonth(Hoje),
+
+    // ==== Gera todas as datas do ano ====
+    QtdeDias    = Duration.Days(FimAno - InicioAno) + 1,
+    DatasLista  = List.Dates(InicioAno, QtdeDias, #duration(1,0,0,0)),
+    Tabela      = Table.FromList(DatasLista, Splitter.SplitByNothing(), {"Data"}, null, ExtraValues.Error),
+
+    // ==== Dia da semana e nome (em pt-BR) ====
+    AddDiaSem   = Table.AddColumn(Tabela, "DiaSemanaNum", each Date.DayOfWeek([Data], Day.Monday), Int64.Type),
+    AddNomeDia  = Table.AddColumn(AddDiaSem, "NomeDia", each Date.ToText([Data], "dddd", "pt-BR"), type text),
+
+    // ==== Identificador do mês para reset do acumulado ====
+    AddInicioMes = Table.AddColumn(AddNomeDia, "InicioMes", each Date.StartOfMonth([Data]), type date),
+
+    // ==== Junta feriados (Left Join com Dim_Feriado[Data]) ====
+    JnFeriado   = Table.NestedJoin(AddInicioMes, {"Data"}, Dim_Feriado, {"Data"}, "Feriado", JoinKind.LeftOuter),
+    AddIsFer    = Table.AddColumn(JnFeriado, "EhFeriado", each Table.RowCount([Feriado]) > 0, type logical),
+    LimpaFer    = Table.RemoveColumns(AddIsFer, {"Feriado"}),
+
+    // ==== Valor do dia: seg–sex=1; sáb=0,75; dom/feriado=0  (0=seg ... 5=sáb, 6=dom) ====
+    AddValorDia = Table.AddColumn(
+                    LimpaFer, "Valor_Dia",
+                    each if [EhFeriado] then 0.25
+                         else if [DiaSemanaNum] = 5 then 0.75
+                         else if [DiaSemanaNum] = 6 then 0.25
+                         else 1.0,
+                    type number),
+
+    // ==== Agrupa por mês e calcula acumulado reiniciando todo mês ====
+    AgrupaMes = Table.Group(
+        AddValorDia,
+        {"InicioMes"},
+        {{"Dados", (t as table) =>
+            let
+                Ordenado   = Table.Sort(t, {{"Data", Order.Ascending}}),
+                AddIndex   = Table.AddIndexColumn(Ordenado, "Idx", 0, 1, Int64.Type),
+                ListaVD    = AddIndex[Valor_Dia],
+
+                // Acumulado (reset mensal)
+                AddAcum    = Table.AddColumn(
+                                AddIndex, "DIAS",
+                                (r as record) => List.Sum(List.FirstN(ListaVD, r[Idx] + 1)),
+                                type number),
+
+                // DU total do mês
+                DU_Mes     = List.Sum(AddAcum[Valor_Dia]),
+
+                // DU (Dia) fixo por mês:
+                // - mês passado: DU_Mes (mês fechado)
+                // - mês atual: DU até hoje
+                // - mês futuro: 0
+                InicioMesLocal = List.Min(AddAcum[InicioMes]),
+                DU_DiaMes  =
+                    if InicioMesLocal < InicioMesHoje then DU_Mes
+                    else if InicioMesLocal = InicioMesHoje then
+                        List.Sum(Table.SelectRows(AddAcum, each [Data] <= Hoje)[Valor_Dia])
+                    else 0,
+
+                AddDia     = Table.AddColumn(AddAcum, "dia", each 1, Int64.Type),
+                AddDUDia   = Table.AddColumn(AddDia, "DU (Dia)", each DU_DiaMes, type number),
+                AddDUMes   = Table.AddColumn(AddDUDia, "DU mês", each DU_Mes, type number),
+
+                Limpa      = Table.RemoveColumns(AddDUMes, {"Idx"})
+            in
+                Limpa,
+            type table}}
+    ),
+
+    // ==== Expande de volta ====
+    Expande = Table.ExpandTableColumn(
+        AgrupaMes, "Dados",
+        {"Data", "NomeDia", "dia", "Valor_Dia", "DIAS", "DU (Dia)", "DU mês"},
+        {"Data", "NomeDia", "dia", "Valor_Dia", "DIAS", "DU (Dia)", "DU mês"}
+    ),
+
+    // ==== Tipos e ordenação ====
+    Tipos = Table.TransformColumnTypes(
+        Expande,
+        {{"Data", type date}, {"NomeDia", type text}, {"dia", Int64.Type}, {"Valor_Dia", type number}, {"DIAS", type number}, {"DU (Dia)", type number}, {"DU mês", type number}}
+    ),
+    Ordena = Table.Sort(Tipos, {{"Data", Order.Ascending}}),
+    #"Colunas Removidas" = Table.RemoveColumns(Ordena,{"NomeDia"})
+in
+    #"Colunas Removidas"
+    
