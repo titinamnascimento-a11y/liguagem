@@ -1,0 +1,49 @@
+let
+    // ===== Define o período da tabela calendário =====
+    DataInicio = #date(2025, 1, 1),
+    DataFim    = #date(2028, 12, 31),
+ 
+    // ===== Lista de datas =====
+    QuantidadeDias = Duration.Days(DataFim - DataInicio),
+    ListaDatas     = List.Dates(DataInicio, QuantidadeDias + 1, #duration(1, 0, 0, 0)),
+ 
+    // ===== Tabela base =====
+    TabelaDatas    = Table.FromList(ListaDatas, Splitter.SplitByNothing(), {"Data"}),
+    AdicionaColunas = Table.TransformColumns(
+        Table.AddColumn(TabelaDatas, "Ano", each Date.Year([Data])),
+        {{"Data", each _, type date}}
+    ),
+    ComMes            = Table.AddColumn(AdicionaColunas, "Mes", each Date.Month([Data])),
+    ComDia            = Table.AddColumn(ComMes, "Dia", each Date.Day([Data])),
+    ComAnoMes         = Table.AddColumn(ComDia, "AnoMes", each Date.ToText([Data], "yyyy/MM")),
+    ComMesAnoNome     = Table.AddColumn(ComAnoMes, "MesAnoNome", each Date.ToText([Data], "MMM/yy")),
+    ComDiaMes         = Table.AddColumn(ComMesAnoNome, "DiaMes", each Date.ToText([Data], "dd/MM")),
+    ComMesNome        = Table.AddColumn(ComDiaMes, "MesNome", each Date.ToText([Data], "MMMM")),
+    ComDiaSemana      = Table.AddColumn(ComMesNome, "DiaSemana", each Date.DayOfWeek([Data]) + 1), // Seg=1..Dom=7
+    ComNomeDiaSemana  = Table.AddColumn(ComDiaSemana, "NomeDiaSemana", each Date.ToText([Data], "dddd")),
+ 
+    // ===== Novas colunas (encadeadas corretamente) =====
+    AddTri    = Table.AddColumn(ComNomeDiaSemana, "Trimestre", each "T" & Number.ToText(Date.QuarterOfYear([Data])), type text),
+    AddAnoTri = Table.AddColumn(AddTri,            "AnoTrim",   each Text.From(Date.Year([Data])) & "-T" & Number.ToText(Date.QuarterOfYear([Data])), type text),
+ 
+    // Data do Ano Anterior Equivalente (ajuste 29/02 -> 28/02)
+    AddPrevYear =
+        Table.AddColumn(
+            AddAnoTri,
+            "DataAnoAnteriorEquivalente",
+            each
+                let
+                    d     = [Data],
+                    dPrev = Date.AddYears(d, -1),
+                    offset = if Date.Month(dPrev) = 2 and Date.Day(dPrev) = 29 then -1 else 0
+                in
+                    Date.AddDays(dPrev, offset),
+            type date
+        ),
+ 
+    // ===== Passos finais (agora referenciando AddPrevYear) =====
+    ResultadoFinal     = AddPrevYear,
+    #"Coluna Duplicada" = Table.DuplicateColumn(ResultadoFinal, "DiaMes", "DiaMes - Copiar"),
+    #"Colunas Renomeadas" = Table.RenameColumns(#"Coluna Duplicada", {{"DiaMes", "DiaMesPorExtenso"}, {"DiaMes - Copiar", "DiaMes"}})
+in
+    #"Colunas Renomeadas"
