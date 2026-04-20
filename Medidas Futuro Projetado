@@ -1,0 +1,141 @@
+_MesDataContexto = 
+VAR d  = MAX ( Dim_Calendario[Data] )
+VAR am = SELECTEDVALUE ( Dim_Calendario[Data])
+VAR d_am =
+    IF (
+        NOT ISBLANK ( am ),
+        DATE ( INT ( am / 100 ), MOD ( am, 100 ), 1 )
+    )
+RETURN
+COALESCE ( d, d_am )
+
+-----------------------------------------------------------------------
+_UltimoMesRealFechado = 
+EOMONTH ( TODAY(), -1 )
+--------------------------------------------------------------------------
+OCS Projeção (Curva Balanceada) = 
+VAR Peso = [Peso Tendência]
+RETURN
+    [OCS Projeção (Polinomial ancorada dinâmica)] * Peso
+    + [OCS Tendência Real Dinâmica] * (1 - Peso)
+------------------------------------------------------------------------
+OCS Projeção (mês atual apenas) = 
+VAR MesCtx   = EOMONTH ( [_MesDataContexto], 0 )
+VAR MesAtual = EOMONTH ( TODAY(), 0 )
+RETURN
+IF ( MesCtx = MesAtual, [Projecao_Final SG], BLANK() )
+-------------------------------------------------------------------------------OCS Projeção (Polinomial ancorada dinâmica) = 
+VAR DataCtx = [_MesDataContexto]
+VAR InicioProjecao = EDATE ( [_UltimoMesRealFechado], 1 )
+
+VAR x =
+    DATEDIFF ( DATE ( 2024, 1, 1 ), DataCtx, MONTH ) + 1
+
+VAR y_base =
+    15.75472897 * ( x ^ 2 )
+    - 185.25712874 * x
+    + 7477.62987013
+
+VAR UltimoMesReal = [_UltimoMesRealFechado]
+
+VAR x_ancora =
+    DATEDIFF (
+        DATE ( 2024, 1, 1 ),
+        DATE ( YEAR ( UltimoMesReal ), MONTH ( UltimoMesReal ), 1 ),
+        MONTH
+    ) + 1
+
+VAR y_base_ancora =
+    15.75472897 * ( x_ancora ^ 2 )
+    - 185.25712874 * x_ancora
+    + 7477.62987013
+
+VAR y_real_ancora =
+    CALCULATE(
+        [oc],
+        FILTER(
+            ALL ( Dim_Calendario ),
+            EOMONTH ( Dim_Calendario[Data], 0 ) = UltimoMesReal
+        )
+    )
+
+VAR delta = y_real_ancora - y_base_ancora
+VAR y = ROUND ( y_base + delta, 0 )
+
+RETURN
+IF (
+    DataCtx >= InicioProjecao,
+    y,
+    BLANK()
+)
+-----------------------------------------------------------------------------------
+OCS Real (até M-1) = 
+VAR MesCtx     = EOMONTH ( [_MesDataContexto], 0 )
+VAR FimMesPrev = EOMONTH ( TODAY(), -1 )
+RETURN
+IF ( MesCtx <= FimMesPrev, [oc], BLANK() )
+
+-------------------------------------------------------------------
+OCS Tendência Real Dinâmica = 
+VAR DataCtx = [_MesDataContexto]
+VAR MesCtx  = DATE ( YEAR ( DataCtx ), MONTH ( DataCtx ), 1 )
+
+VAR UltimoMesFechado =
+    DATE ( YEAR ( EOMONTH ( TODAY(), -1 ) ), MONTH ( EOMONTH ( TODAY(), -1 ) ), 1 )
+
+VAR InicioJanela =
+    EDATE ( UltimoMesFechado, -5 )   -- últimos 6 meses contando o último fechado
+
+VAR TabelaMeses =
+    ADDCOLUMNS(
+        FILTER(
+            ALL ( Dim_Calendario ),
+            Dim_Calendario[Data] >= InicioJanela
+                && Dim_Calendario[Data] <= UltimoMesFechado
+                && DAY ( Dim_Calendario[Data] ) = 1
+        ),
+        "X", DATEDIFF ( InicioJanela, Dim_Calendario[Data], MONTH ) + 1,
+        "Y",
+            CALCULATE(
+                [oc],
+                FILTER(
+                    ALL ( Dim_Calendario ),
+                    YEAR ( Dim_Calendario[Data] ) = YEAR ( EARLIER ( Dim_Calendario[Data] ) )
+                        && MONTH ( Dim_Calendario[Data] ) = MONTH ( EARLIER ( Dim_Calendario[Data] ) )
+                )
+            )
+    )
+
+VAR MediaX = AVERAGEX ( TabelaMeses, [X] )
+VAR MediaY = AVERAGEX ( TabelaMeses, [Y] )
+
+VAR Numerador =
+    SUMX(
+        TabelaMeses,
+        ([X] - MediaX) * ([Y] - MediaY)
+    )
+
+VAR Denominador =
+    SUMX(
+        TabelaMeses,
+        ([X] - MediaX) ^ 2
+    )
+
+VAR Inclinacao = DIVIDE ( Numerador, Denominador )
+VAR Intercepto = MediaY - ( Inclinacao * MediaX )
+
+VAR XAtual =
+    DATEDIFF ( InicioJanela, MesCtx, MONTH ) + 1
+
+VAR YProjetado =
+    ROUND ( Intercepto + ( Inclinacao * XAtual ), 0 )
+
+RETURN
+IF (
+    MesCtx >= DATE ( YEAR ( TODAY() ), MONTH ( TODAY() ), 1 )
+        && MesCtx <= DATE ( YEAR ( TODAY() ), 12, 1 ),
+    YProjetado,
+    BLANK()
+)
+-------------------------------------------------------------------------
+Peso Tendência = 0.65
