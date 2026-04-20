@@ -1,0 +1,79 @@
+let
+// Criando minha função encapsulada
+fnGerarPeriodos = (Periodo as text, DataInicial as date, DataFinal as date, Ordem as number) =>
+    let
+        QtdDias = Duration.Days(DataFinal - DataInicial) + 1,
+        Datas = List.Dates(DataInicial, QtdDias, #duration(1, 0, 0, 0)),
+        Cabecalho = type table[Data = date, Periodo = text, Ordem = number],
+        Lista = List.Transform(
+            Datas,
+            each { _, Periodo, Ordem }
+        ),
+        Tabela = #table(Cabecalho, Lista)
+    in
+        Tabela,
+
+// Datas base
+    DtHoje = DateTime.Date(DateTime.FixedLocalNow()),
+    DtOntem = Date.AddDays(DtHoje, -1),
+
+// Semana atual
+    InicioSemana = Date.StartOfWeek(DtOntem),
+    FimSemana = Date.EndOfWeek(DtOntem),
+
+// Semana passada
+    InicioSemanaPassada = Date.AddDays(InicioSemana, -7),
+    FimSemanaPassada = Date.AddDays(FimSemana, -7),
+
+// Duas semanas atrás
+    InicioDuasSemanasPassada = Date.AddDays(InicioSemanaPassada, -7),
+    FimDuasSemanasPassadas = Date.AddDays(FimSemanaPassada, -7),
+
+// Mês atual
+    InicioMes = Date.StartOfMonth(DtOntem),
+    FimMes = Date.EndOfMonth(DtOntem),
+
+// Mês anterior
+    InicioMesAnterior = Date.StartOfMonth(Date.AddMonths(DtOntem, -1)),
+    FimMesAnterior = Date.EndOfMonth(Date.AddMonths(DtOntem, -1)),
+
+// Este ano
+    InicioAno = Date.StartOfYear(DtOntem),
+    FimAno = Date.EndOfYear(DtOntem),
+
+// Lista de intervalos de datas
+    Intervalos = {
+        { "Hoje", DtHoje, DtHoje, 1 },
+        { "Ontem", DtOntem, DtOntem, 2 },
+        { "Esta Semana", InicioSemana, FimSemana, 3 },
+        { "Últimos 7 dias", Date.AddDays(DtHoje, -6), DtHoje, 4 },
+        { "Semana Passada", InicioSemanaPassada, FimSemanaPassada, 5 },
+        { "Últimos 15 dias", Date.AddDays(DtHoje, -14), DtHoje, 6 },
+        { "Este Mês", InicioMes, FimMes, 7 },
+        { "Últimos 30 dias", Date.AddDays(DtHoje, -29), DtHoje, 8 },
+        { "Mês Corrido (até hoje)", InicioMes, DtHoje, 9 },
+        { "Mês Passado", InicioMesAnterior, FimMesAnterior, 10 },
+        { "Últimos 2 meses", Date.StartOfMonth(Date.AddMonths(DtHoje, -2)), Date.EndOfMonth(Date.AddMonths(DtHoje, -1)), 11 },
+        { "Últimos 3 meses", Date.StartOfMonth(Date.AddMonths(DtHoje, -3)), Date.EndOfMonth(Date.AddMonths(DtHoje, -1)), 12 },
+        { "Últimos 4 meses", Date.StartOfMonth(Date.AddMonths(DtHoje, -4)), Date.EndOfMonth(Date.AddMonths(DtHoje, -1)), 20 },
+        { "Últimos 6 meses", Date.StartOfMonth(Date.AddMonths(DtHoje, -6)), Date.EndOfMonth(Date.AddMonths(DtHoje, -1)), 13 },
+        { "Últimos 12 meses", Date.StartOfMonth(Date.AddMonths(DtHoje, -12)), Date.EndOfMonth(Date.AddMonths(DtHoje, -1)), 14 },
+        { "Últimos 10 dias D-1", Date.AddDays(DtOntem, -9), DtOntem, 21 },
+        { "Últimos 365 dias", Date.AddDays(DtHoje, -364), DtHoje, 15 },
+        { "Este Ano", InicioAno, FimAno, 16 },
+        { "Ano Passado", Date.AddYears(InicioAno, -1), Date.AddYears(FimAno, -1), 17 },
+        { "Do início até Hoje", Date.AddYears(InicioAno, -10), DtHoje, 18 },
+        {"Útimas 4 semanas", Date.StartOfWeek(Date.AddDays(InicioSemana, -21), Day.Monday),FimSemana, 19},
+
+        // 🔹 NOVA OPÇÃO EXIGIDA: mantém o mesmo padrão de nomes e lógica
+        { "Este Mês -1 Dia", InicioMes, DtOntem, 19 }
+    },
+
+// Aplicando a função de períodos
+    Periodos = List.Transform(
+        Intervalos,
+        each fnGerarPeriodos(_{0}, _{1}, _{2}, _{3})
+    ),
+    Tabela = Table.Combine(Periodos)
+in
+    Tabela
