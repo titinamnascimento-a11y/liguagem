@@ -1,0 +1,335 @@
+Produtividade_Mes = 
+DISTINCTCOUNT('tbl oc'[IDENTIFICADOR])
+---------------------------------------------------
+Qtd ID Anterior 30d = 
+CALCULATE(
+    COUNTROWS('tbl oc'),
+    NOT ISBLANK('tbl oc'[ID Ocorrência Anterior 30d])
+)
+----------------------------------------------------------
+Qtd Tecnico Distinto = 
+DISTINCTCOUNT('tbl oc'[Tecnico Anterior 30d])
+----------------------------------------------------
+Reincidencias_Causadas = 
+
+CALCULATE(
+    DISTINCTCOUNT('tbl oc'[IDENTIFICADOR]),
+    'tbl oc'[Flag Reincidente 30 Dias] = "Sim"
+)
+----------------------------------------------------------
+Reincidencias_Causadas_Total = 
+SUMX(
+    VALUES('tbl oc'[Tecnico Anterior 30d]),
+    [Reincidencias_Causadas]
+)
+-------------------------------------------------
+Responsabilidade_Real = 
+DISTINCTCOUNT('tbl oc'[IDENTIFICADOR])
+-------------------------------------------------------------
+Taxa_Reincidencia x = 
+DIVIDE(
+    [Reincidencias_Causadas_Total],
+    [Responsabilidade_Real]
+)
+----------------------------------- para coluna adicional
+AGING 24H = 
+VAR h = 'tbl oc'[HORAS CORRIDAS]   -- horas em decimal
+RETURN
+SWITCH (
+    TRUE(),
+    ISBLANK(h),                "Sem dados",
+    h < 3,                     "0 a 3h",
+    h < 5,                     "3 a 5h",
+    h < 8,                     "5 a 8h",
+    h < 12,                    "8 a 12h",
+    h < 24,                    "12 a 24h",
+                                ">24h"
+)
+----------------------------------------------------------------
+AGING 24H ORDEM = 
+VAR h = 'tbl oc'[HORAS CORRIDAS]
+RETURN
+SWITCH (
+    TRUE(),
+    ISBLANK(h),    0,
+    h < 3,         1,
+    h < 5,         2,
+    h < 8,         3,
+    h < 12,        4,
+    h < 24,        5,
+                    6
+)
+---------------------------------------
+AFETACAO GV RANGE = 
+SWITCH(
+    TRUE(),
+    'tbl oc'[AFETACAO]<= 200, "<200",
+    'tbl oc'[AFETACAO] >= 201 && 'tbl oc'[AFETACAO] <= 400, "201-400",
+    ">400"
+)
+
+-----------------------------------------
+Afetacao Range = 
+
+SWITCH (
+    TRUE(),
+    'tbl oc'[AFETACAO] = 0, "0",
+    'tbl oc'[AFETACAO] = 1, "1",
+    'tbl oc'[AFETACAO] > 1 && 'tbl oc'[AFETACAO] <= 8, "ENTRE 2 E 8",
+    'tbl oc'[AFETACAO] > 8, ">8",
+    BLANK()
+)
+--------------------------------------------------------------------
+Funcionario_Valido = 
+VAR Causa = UPPER( COALESCE('tbl oc'[CAUSA], "") )
+VAR Func  = TRIM( COALESCE('tbl oc'[FUNCIONARIO], "") )
+RETURN
+IF(
+    Causa = "ONT ROGUE" || Func = "",
+    BLANK(),                      -- não conta
+    'tbl oc'[FUNCIONARIO]
+)
+-----------------------------------------------------------
+ChaveDia = 
+VAR Causa = COALESCE( 'tbl oc'[CAUSA], "" )
+VAR FuncR = COALESCE( 'tbl oc'[FUNCIONARIO], "" )
+VAR Func  = TRIM( FuncR )
+VAR Dt    = 'tbl oc'[DATA_OCORRENCIA_FINAL]
+RETURN
+IF(
+    Causa = "ONT ROGUE" || Func = "" || ISBLANK(Dt),
+    BLANK(),
+    Func & " | " & FORMAT( Dt, "dd/MM/yyyy" )
+)
+----------------------------------------------------------------
+DataSemHora = 
+INT( 'tbl oc'[DATA_OCORRENCIA_FINAL] )
+-------------------------------------------------------------------
+JUSTIFICATIVA = 'tbl oc'[FALHA]&" / "& 'tbl oc'[CAUSA]
+-------------------------------------------------------------
+ID Ocorrência Anterior 30d = 
+VAR IdentificadorAtual = 'tbl oc'[IDENTIFICADOR]
+VAR DataAtual = INT('tbl oc'[DATA])
+VAR IdAtual = 'tbl oc'[ID_OCORRENCIA]
+ 
+VAR LinhaAnterior =
+    TOPN(
+        1,
+        FILTER(
+            ALL('tbl oc'),
+            'tbl oc'[IDENTIFICADOR] = IdentificadorAtual
+                && INT('tbl oc'[DATA]) < DataAtual
+                && INT('tbl oc'[DATA]) >= DataAtual - 30
+                && 'tbl oc'[ID_OCORRENCIA] <> IdAtual
+        ),
+        'tbl oc'[DATA], DESC,
+        'tbl oc'[ID_OCORRENCIA], DESC
+    )
+ 
+VAR IdAnterior =
+    MAXX(LinhaAnterior, 'tbl oc'[ID_OCORRENCIA])
+ 
+VAR FuncAnterior =
+    MAXX(LinhaAnterior, 'tbl oc'[FUNCIONARIO])
+ 
+VAR CausaAnterior =
+    MAXX(LinhaAnterior, 'tbl oc'[CAUSA])
+ 
+VAR FuncTratado = TRIM(COALESCE(FuncAnterior, ""))
+VAR CausaTratada = UPPER(TRIM(COALESCE(CausaAnterior, "")))
+ 
+RETURN
+IF(
+    CausaTratada = "ONT ROGUE"
+        || FuncTratado = "",
+    BLANK(),
+    IdAnterior
+)
+---------------------------------------------------------------------------------------
+Data Ocorrência Anterior 30d = 
+VAR IdAnterior = 'tbl oc'[ID Ocorrência Anterior 30d]
+RETURN
+IF(
+    ISBLANK(IdAnterior),
+    BLANK(),
+    LOOKUPVALUE(
+        'tbl oc'[DATA],
+        'tbl oc'[ID_OCORRENCIA], IdAnterior
+    )
+)
+---------------------------------------------------------------------
+Causa Ocorrência Anterior 30d = 
+VAR IdAnterior = 'tbl oc'[ID Ocorrência Anterior 30d]
+VAR CausaAnterior =
+    LOOKUPVALUE(
+        'tbl oc'[CAUSA],
+        'tbl oc'[ID_OCORRENCIA], IdAnterior
+    )
+RETURN
+IF(
+    ISBLANK(IdAnterior)
+        || TRIM(COALESCE(CausaAnterior, "")) = "",
+    BLANK(),
+    CausaAnterior
+)
+-------------------------------------------------
+Funcionario Primeiro Atendimento = 
+VAR IdentificadorAtual = 'tbl oc'[IDENTIFICADOR]
+VAR DataPrimeira = 'tbl oc'[Data Primeiro Atendimento]
+RETURN
+CALCULATE(
+    MAX('tbl oc'[Funcionario_Valido]),
+    FILTER(
+        ALL('tbl oc'),
+        'tbl oc'[IDENTIFICADOR] = IdentificadorAtual
+            && 'tbl oc'[DiaMes] = DataPrimeira
+    )
+)
+
+------------------------------------------------------------------
+Segundo Atendiento (Tecnico) = 'tbl oc'[Funcionario_Valido]
+---------------------------------------------------------------------
+Dias até Reincidência = 
+VAR IdAnterior = 'tbl oc'[ID Ocorrência Anterior 30d]
+VAR DataAtual = INT('tbl oc'[DATA])
+VAR DataAnterior = INT('tbl oc'[Data Ocorrência Anterior 30d])
+RETURN
+IF(
+    ISBLANK(IdAnterior),
+    BLANK(),
+    DataAtual - DataAnterior
+)
+-------------------------------------------------------------------------------
+Flag Reincidente 30 Dias = 
+IF(
+    'tbl oc'[Reabertura até 30 Dias] = "Sim",
+    "Sim",
+    "Não"
+)
+------------------------------------------------------------------------------------
+Reabertura até 30 Dias = 
+VAR DataAtual = INT('tbl oc'[DATA])
+VAR DataAnterior = INT('tbl oc'[Data Ocorrência Anterior 30d])
+RETURN
+IF(
+    ISBLANK(DataAnterior),
+    "Não",
+    IF(
+        DataAtual > DataAnterior
+            && DataAtual - DataAnterior <= 30,
+        "Sim",
+        "Não"
+    )
+)
+-----------------------------------------------------------------------------------------------------
+Eh Reabertura = 
+VAR DataAtual = INT('tbl oc'[DATA])
+VAR DataAnterior = INT('tbl oc'[Data Ocorrência Anterior 30d])
+RETURN
+IF(
+    ISBLANK(DataAnterior),
+    "Não",
+    IF(
+        DataAtual > DataAnterior,
+        "Sim",
+        "Não"
+    )
+)
+------------------------------------------------------------------------------------------------------------
+Data Primeiro Atendimento = 
+DATE(
+    YEAR(
+        CALCULATE(
+            MIN('tbl oc'[DATA_OCORRENCIA]),
+            ALLEXCEPT('tbl oc', 'tbl oc'[IDENTIFICADOR])
+        )
+    ),
+    MONTH(
+        CALCULATE(
+            MIN('tbl oc'[DATA_OCORRENCIA]),
+            ALLEXCEPT('tbl oc', 'tbl oc'[IDENTIFICADOR])
+        )
+    ),
+    DAY(
+        CALCULATE(
+            MIN('tbl oc'[DATA_OCORRENCIA]),
+            ALLEXCEPT('tbl oc', 'tbl oc'[IDENTIFICADOR])
+        )
+    )
+)
+------------------------------------------------------------------------------------------------
+DiaMes = 
+DATE(
+    YEAR('tbl oc'[DATA_OCORRENCIA]),
+    MONTH('tbl oc'[DATA_OCORRENCIA]),
+    DAY('tbl oc'[DATA_OCORRENCIA])
+)
+-------------------------------------------------------------------------------------------------
+Data Primeiro Atendimento Texto = 
+DATE(
+    YEAR(
+        CALCULATE(
+            MIN('tbl oc'[DATA_OCORRENCIA]),
+            ALLEXCEPT('tbl oc', 'tbl oc'[IDENTIFICADOR])
+        )
+    ),
+    MONTH(
+        CALCULATE(
+            MIN('tbl oc'[DATA_OCORRENCIA]),
+            ALLEXCEPT('tbl oc', 'tbl oc'[IDENTIFICADOR])
+        )
+    ),
+    DAY(
+        CALCULATE(
+            MIN('tbl oc'[DATA_OCORRENCIA]),
+            ALLEXCEPT('tbl oc', 'tbl oc'[IDENTIFICADOR])
+        )
+    )
+)
+---------------------------------------------------------------
+Primeiro Atendimento Data = 'tbl oc'[Tecnico Anterior 30d]&" "&'tbl oc'[Data Ocorrência Anterior 30d]
+------------------------------------------------------------------------------------------------------------
+Tecnico Anterior 30d = 
+VAR IdentificadorAtual = 'tbl oc'[IDENTIFICADOR]
+VAR DataAtual = INT('tbl oc'[DATA])
+VAR IdAtual = 'tbl oc'[ID_OCORRENCIA]
+ 
+VAR LinhaAnterior =
+    TOPN(
+        1,
+        FILTER(
+            ALL('tbl oc'),
+            'tbl oc'[IDENTIFICADOR] = IdentificadorAtual
+                && INT('tbl oc'[DATA]) < DataAtual
+                && INT('tbl oc'[DATA]) >= DataAtual - 30
+                && 'tbl oc'[ID_OCORRENCIA] <> IdAtual
+        ),
+        'tbl oc'[DATA], DESC,
+        'tbl oc'[ID_OCORRENCIA], DESC
+    )
+ 
+VAR FuncAnterior =
+    MAXX(LinhaAnterior, 'tbl oc'[FUNCIONARIO])
+ 
+VAR CausaAnterior =
+    MAXX(LinhaAnterior, 'tbl oc'[CAUSA])
+ 
+VAR FuncTratado = TRIM(COALESCE(FuncAnterior, ""))
+VAR CausaTratada = UPPER(COALESCE(CausaAnterior, ""))
+ 
+RETURN
+IF(
+    CausaTratada = "ONT ROGUE"
+        || FuncTratado = "",
+    BLANK(),
+    FuncAnterior
+)
+------------------------------------------------------------------------------------
+Identificador_Valido = 
+VAR Tamanho = LEN('tbl oc'[IDENTIFICADOR])
+RETURN
+IF(
+    Tamanho < 14,
+    BLANK(),
+    'tbl oc'[IDENTIFICADOR]
+)
