@@ -1,0 +1,37 @@
+Mes_Atual_Indicador = 
+IF(
+    MONTH(MAX(Tbl_Projetado[Data])) = MONTH(TODAY()) &&
+    YEAR(MAX(Tbl_Projetado[Data])) = YEAR(TODAY()),
+    [MES ATUAL SG],
+    BLANK()
+)
+--------------------------------------------------------------
+  Projecao_Final SG (Mes Atual) = 
+VAR DataLinha = MAX(Tbl_Projetado[Data])
+
+VAR Projecao =
+    VAR DiasAnterior =
+        CALCULATE(
+            MAX(Tbl_Projetado[DIAS]),
+            Tbl_Projetado[Data] = TODAY() - 1
+        )
+
+    VAR UltimoDiaMes =
+        CALCULATE(
+            MAX(Tbl_Projetado[DIAS]),
+            Tbl_Projetado[Data] = EOMONTH(TODAY(), 0)
+        )
+
+    VAR ResultadoDivisao =
+        [MES ATUAL SG] / DiasAnterior
+
+    RETURN
+        ResultadoDivisao * UltimoDiaMes
+
+RETURN
+IF(
+    MONTH(DataLinha) = MONTH(TODAY()) &&
+    YEAR(DataLinha) = YEAR(TODAY()),
+    Projecao,
+    BLANK()
+)
